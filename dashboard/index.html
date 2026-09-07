@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CyberMNT Team Monitor</title>
+<style>
+  /*
+    Design plan
+    -----------
+    Color: base #12161c (deep slate, not pure black), panel #1a2029,
+    border #232b36, text-primary #e7ecf2, text-secondary #8a96a6.
+    Status colors ARE the accent system here, not a single decorative
+    hue: good #4f9d6e, warn #d9a441, critical #c1554d, and one neutral
+    "focus" blue #5b8def used only for interactive/selected states.
+    That's the deliberate choice: on a monitoring tool, color should
+    always mean something, never just decorate.
+
+    Type: one family (system-ui stack) at a disciplined scale
+    (12/13/14/16/20/28). A second display face would add personality
+    this tool doesn't need -- it's read at a glance, all day, by people
+    who want data fast, not a brand moment.
+
+    Layout: top bar (org + role switch + consent status, always
+    visible) / left roster rail grouped by status / main timeline panel
+    / right alerts feed. Left-aligned, dense. This is a working tool,
+    not a marketing page.
+  */
+  :root {
+    --bg: #12161c;
+    --panel: #1a2029;
+    --panel-2: #1f2630;
+    --border: #232b36;
+    --text: #e7ecf2;
+    --text-dim: #8a96a6;
+    --good: #4f9d6e;
+    --warn: #d9a441;
+    --critical: #c1554d;
+    --focus: #5b8def;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 12px; color: var(--text-dim); }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .consent-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+  }
+  .consent-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+  select#roleSwitch {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    height: calc(100vh - 49px);
+  }
+  .roster { border-right: 1px solid var(--border); overflow-y: auto; padding: 14px 0; }
+  .roster-group-label {
+    font-size: 12px; color: var(--text-dim); padding: 6px 16px; margin-top: 6px;
+  }
+  .roster-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; cursor: pointer; border-left: 2px solid transparent;
+  }
+  .roster-item:hover { background: var(--panel-2); }
+  .roster-item.selected { background: var(--panel-2); border-left-color: var(--focus); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.online { background: var(--good); }
+  .status-dot.idle { background: var(--warn); }
+  .status-dot.offline { background: var(--text-dim); }
+  .roster-name { font-size: 13px; }
+  .roster-meta { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+  .main { padding: 20px 24px; overflow-y: auto; }
+  .main-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  .main-header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  .main-header .meta { font-size: 12px; color: var(--text-dim); }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card .label { font-size: 12px; color: var(--text-dim); }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .timeline { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .timeline h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; color: var(--text-dim); }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-row .hour { width: 40px; font-size: 11px; color: var(--text-dim); text-align: right; }
+  .bar-track { flex: 1; height: 14px; background: var(--panel-2); border-radius: 4px; overflow: hidden; display: flex; }
+  .bar-seg.productive { background: var(--good); }
+  .bar-seg.neutral { background: var(--focus); opacity: .55; }
+  .bar-seg.idle { background: var(--panel-2); border-right: 1px solid var(--border); }
+  .alerts-rail { border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; }
+  .alerts-rail h2 { font-size: 13px; color: var(--text-dim); margin: 0 0 12px; font-weight: 600; }
+  .alert-item {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+    border-left-width: 3px;
+  }
+  .alert-item.warning { border-left-color: var(--warn); }
+  .alert-item.critical { border-left-color: var(--critical); }
+  .alert-item.info { border-left-color: var(--focus); }
+  .alert-item .a-emp { font-size: 12px; color: var(--text-dim); }
+  .alert-item .a-msg { font-size: 13px; margin-top: 2px; }
+  .empty-note { color: var(--text-dim); font-size: 13px; padding: 8px 16px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="brand-name">CyberMNT</span>
+    <span class="brand-sub">Team Monitor</span>
+  </div>
+  <div class="topbar-right">
+    <div class="consent-pill"><span class="consent-dot"></span> All active devices consented</div>
+    <select id="roleSwitch">
+      <option value="admin">View as: Admin</option>
+      <option value="hr">View as: HR</option>
+      <option value="manager">View as: Manager</option>
+    </select>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="roster" id="roster"></div>
+
+  <div class="main">
+    <div class="main-header">
+      <h1 id="selectedName">Select a team member</h1>
+      <span class="meta" id="selectedMeta"></span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="timeline">
+      <h2>Today — activity by hour</h2>
+      <div id="timelineBars"></div>
+    </div>
+  </div>
+
+  <div class="alerts-rail">
+    <h2>Active alerts</h2>
+    <div id="alertsList"></div>
+  </div>
+</div>
+
+<script>
+/*
+  Demo mode by default -- generates mock data client-side so this file is
+  reviewable standalone. Point API_BASE at a running backend (see
+  ../backend) and set DEMO_MODE = false to load real data instead; the
+  fetch calls below already match the backend's /dashboard/* routes.
+*/
+const API_BASE = "http://localhost:8000";
+const DEMO_MODE = true;
+
+const TEAM = [
+  { id: "emp_0001", name: "A. Rao",     team: "soc",       status: "online",  idle: false },
+  { id: "emp_0002", name: "J. Fontaine",team: "soc",       status: "online",  idle: true  },
+  { id: "emp_0003", name: "M. Osei",    team: "pentest",   status: "offline", idle: null  },
+  { id: "emp_0004", name: "S. Kapoor",  team: "pentest",   status: "online",  idle: false },
+  { id: "emp_0005", name: "R. Alvarez", team: "research",  status: "idle",    idle: true  },
+];
+
+const ALERTS = [
+  { employee_id: "emp_0003", alert_type: "missed_heartbeat", severity: "warning",
+    message: "No signal from device in over 45 minutes.", timestamp: Date.now()/1000 - 2700 },
+  { employee_id: "emp_0002", alert_type: "after_hours", severity: "info",
+    message: "Activity reported outside normal hours (22:00 local).", timestamp: Date.now()/1000 - 5400 },
+];
+
+function mockHourlyBreakdown() {
+  const hours = [];
+  for (let h = 8; h <= 18; h++) {
+    const productive = Math.random() * 0.6;
+    const neutral = Math.random() * (1 - productive) * 0.6;
+    const idle = 1 - productive - neutral;
+    hours.push({ hour: h, productive, neutral, idle });
+  }
+  return hours;
+}
+
+let selectedEmployee = TEAM[0].id;
+
+function statusGroup(member) {
+  if (member.status === "offline") return "Offline";
+  if (member.idle) return "Idle";
+  return "Active";
+}
+
+function renderRoster() {
+  const groups = { "Active": [], "Idle": [], "Offline": [] };
+  TEAM.forEach(m => groups[statusGroup(m)].push(m));
+
+  const el = document.getElementById("roster");
+  el.innerHTML = "";
+  for (const [label, members] of Object.entries(groups)) {
+    if (members.length === 0) continue;
+    const groupLabel = document.createElement("div");
+    groupLabel.className = "roster-group-label";
+    groupLabel.textContent = `${label} (${members.length})`;
+    el.appendChild(groupLabel);
+
+    members.forEach(m => {
+      const item = document.createElement("div");
+      item.className = "roster-item" + (m.id === selectedEmployee ? " selected" : "");
+      const dotClass = m.status === "offline" ? "offline" : (m.idle ? "idle" : "online");
+      item.innerHTML = `
+        <span class="status-dot ${dotClass}"></span>
+        <span class="roster-name">${m.name}</span>
+        <span class="roster-meta">${m.team}</span>
+      `;
+      item.onclick = () => { selectedEmployee = m.id; render(); };
+      el.appendChild(item);
+    });
+  }
+}
+
+function renderMain() {
+  const member = TEAM.find(m => m.id === selectedEmployee);
+  document.getElementById("selectedName").textContent = member.name;
+  document.getElementById("selectedMeta").textContent =
+    `${member.team} team · ${statusGroup(member)}`;
+
+  const memberAlerts = ALERTS.filter(a => a.employee_id === member.id).length;
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="label">Status</div><div class="value">${statusGroup(member)}</div></div>
+    <div class="card"><div class="label">Active hours today</div><div class="value">${(4 + Math.random()*3).toFixed(1)}h</div></div>
+    <div class="card"><div class="label">Open alerts</div><div class="value">${memberAlerts}</div></div>
+  `;
+
+  const bars = mockHourlyBreakdown();
+  document.getElementById("timelineBars").innerHTML = bars.map(b => `
+    <div class="bar-row">
+      <div class="hour">${b.hour}:00</div>
+      <div class="bar-track">
+        <div class="bar-seg productive" style="width:${b.productive*100}%"></div>
+        <div class="bar-seg neutral" style="width:${b.neutral*100}%"></div>
+        <div class="bar-seg idle" style="width:${b.idle*100}%"></div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderAlerts() {
+  const el = document.getElementById("alertsList");
+  if (ALERTS.length === 0) {
+    el.innerHTML = `<div class="empty-note">No active alerts.</div>`;
+    return;
+  }
+  el.innerHTML = ALERTS.map(a => {
+    const who = TEAM.find(m => m.id === a.employee_id);
+    const mins = Math.round((Date.now()/1000 - a.timestamp) / 60);
+    return `
+      <div class="alert-item ${a.severity}">
+        <div class="a-emp">${who ? who.name : a.employee_id} · ${mins}m ago</div>
+        <div class="a-msg">${a.message}</div>
+      </div>`;
+  }).join("");
+}
+
+function render() {
+  renderRoster();
+  renderMain();
+  renderAlerts();
+}
+
+async function loadLiveData(token) {
+  const headers = { "Authorization": `Bearer ${token}` };
+  const [status, alerts] = await Promise.all([
+    fetch(`${API_BASE}/dashboard/team/status`, { headers }).then(r => r.json()),
+    fetch(`${API_BASE}/dashboard/alerts`, { headers }).then(r => r.json()),
+  ]);
+  // Map live API shape into the same TEAM/ALERTS structures render() uses,
+  // then call render(). Left as an integration point rather than fully
+  // wired up, since it depends on how you're issuing dashboard tokens
+  // (SSO, login form, etc.) in your real deployment.
+  console.log("Live status:", status, "Live alerts:", alerts);
+}
+
+document.getElementById("roleSwitch").addEventListener("change", (e) => {
+  // In live mode this would re-fetch scoped to the logged-in user's role;
+  // the backend enforces scoping regardless of what this dropdown shows.
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

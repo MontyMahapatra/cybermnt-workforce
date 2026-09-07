@@ -1,0 +1,18 @@
+# Copy to config.yaml and fill in real values. Never commit config.yaml.
+
+server_url: "https://monitor.cybermnt.internal"
+employee_id: "emp_0001"
+device_token: "REPLACE_WITH_DEVICE_SECRET_FROM_ENROLLMENT"
+
+# The agent refuses to collect anything until this is true. Set it only
+# after the employee has actually seen and acknowledged the monitoring
+# notice -- this flag is your compliance evidence, don't fake it.
+consent_acknowledged: false
+
+heartbeat_interval_seconds: 60
+activity_poll_interval_seconds: 15
+idle_threshold_seconds: 300   # 5 min with no input counts as idle
+
+# Verify TLS certs. Only set false against a local dev server with a
+# self-signed cert, never in production.
+verify_tls: true

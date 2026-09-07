@@ -1,0 +1,8 @@
+requests>=2.31
+PyYAML>=6.0
+psutil>=5.9
+
+# Platform-specific extras (install only what applies to your OS):
+#   Windows:  pip install pywin32
+#   macOS:    pip install pyobjc-framework-Quartz pyobjc-framework-AppKit
+#   Linux:    sudo apt install xprintidle wmctrl   (system packages, not pip)
