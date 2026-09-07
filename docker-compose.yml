@@ -1,0 +1,43 @@
+# Written to make it possible to run the whole backend + a real Postgres
+# with one command, instead of every tester needing Python/venv locally.
+#
+# HONESTY NOTE: this file has NOT been run in the environment this project
+# was built in -- that sandbox has no Docker installed at all (confirmed:
+# `docker --version` returns "not found"). I wrote this the same way I'd
+# write any other Compose file, but I have not personally verified it
+# boots clean. Run `docker compose up --build` yourself and treat the
+# first run as a test, not an assumption.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cybermnt
+      POSTGRES_PASSWORD: cybermnt_dev_only_change_me
+      POSTGRES_DB: cybermnt_monitor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybermnt"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://cybermnt:cybermnt_dev_only_change_me@db:5432/cybermnt_monitor
+      # Generate real values for these -- do not ship the placeholders below.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in your shell or a .env file next to this compose file}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?set FIELD_ENCRYPTION_KEY the same way}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRY_MINUTES: "30"
+      CORS_ORIGINS: http://localhost:5500
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

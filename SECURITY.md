@@ -21,6 +21,11 @@ means two different things, and it's worth separating them.
 - All agent → backend traffic is meant to run over TLS (terminate TLS at a
   reverse proxy in production; `main.py` includes an HSTS header assuming
   that's in place).
+- The backend refuses to start at all if `JWT_SECRET` or
+  `FIELD_ENCRYPTION_KEY` aren't set — earlier versions silently fell back
+  to an insecure hardcoded dev secret, which is exactly the kind of thing
+  that quietly ends up running in production. Now it's a startup crash
+  with a clear message instead of a silent security hole.
 - Every agent event is HMAC-SHA256 signed with a per-device secret issued
   at enrollment (`backend/security.py::verify_hmac`). A stolen event
   payload without the device secret can't be replayed as a different

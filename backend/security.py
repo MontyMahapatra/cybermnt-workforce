@@ -11,12 +11,28 @@ from sqlalchemy.orm import Session
 
 from models import AuditLog, Device
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-insecure-secret-change-me")
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRY_MINUTES = int(os.getenv("JWT_EXPIRY_MINUTES", "30"))
 
+if not JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET is not set. This used to silently fall back to a "
+        "hardcoded dev value, which is exactly the kind of thing that "
+        "accidentally ships to production. Generate one with:\n"
+        '  python -c "import secrets; print(secrets.token_hex(32))"\n'
+        "and put it in your .env (see .env.example)."
+    )
+
 _fernet_key = os.getenv("FIELD_ENCRYPTION_KEY")
-_fernet = Fernet(_fernet_key.encode()) if _fernet_key else None
+if not _fernet_key:
+    raise RuntimeError(
+        "FIELD_ENCRYPTION_KEY is not set. Generate one with:\n"
+        '  python -c "from cryptography.fernet import Fernet; '
+        'print(Fernet.generate_key().decode())"\n'
+        "and put it in your .env (see .env.example)."
+    )
+_fernet = Fernet(_fernet_key.encode())
 
 
 # --------------------------------------------------------------- Passwords
@@ -57,14 +73,10 @@ def verify_hmac(payload: dict, signature: str, device_secret: str) -> bool:
 
 # ----------------------------------------------------- Field encryption --
 def encrypt_field(plaintext: str) -> str:
-    if not _fernet:
-        raise RuntimeError("FIELD_ENCRYPTION_KEY not configured")
     return _fernet.encrypt(plaintext.encode()).decode()
 
 
 def decrypt_field(ciphertext: str) -> str:
-    if not _fernet:
-        raise RuntimeError("FIELD_ENCRYPTION_KEY not configured")
     return _fernet.decrypt(ciphertext.encode()).decode()
 
 

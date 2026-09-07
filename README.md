@@ -36,6 +36,19 @@ cybermnt-monitor/
 └── .env.example
 ```
 
+## Quick start (Docker)
+
+```bash
+export JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+export FIELD_ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+docker compose up --build
+```
+
+> **Honesty note:** `docker-compose.yml` was written but not run in the
+> environment this project was built in — there's no Docker there to test
+> it against. Treat your first `docker compose up` as the actual test,
+> not an assumption that it's already verified.
+
 ## Quick start (backend)
 
 **Windows (PowerShell)**
@@ -182,6 +195,18 @@ data out of the box; point `API_BASE` at the top of the file to your running
 backend to see live data. Access is role-scoped (Admin / Manager / HR) —
 the demo lets you switch roles to see how each view differs.
 
+## ⚠️ Demo data is for local evaluation only
+
+`backend/seed_demo_data.py` creates a device with `consent_ack=True`
+already set and prints an admin password straight to your terminal. That's
+convenient for trying the project out locally. It is **not** something to
+run against a real deployment — consent should only ever be flipped true
+after an actual employee has actually seen the actual notice, and admin
+credentials shouldn't originate from a script's stdout. If you're testing
+this project, this script is fine. If you're standing up something real,
+skip it and use `POST /devices/enroll` (see above) plus a real admin
+account you create deliberately.
+
 ## Legal & ethical notes (read before deploying)
 
 Workplace monitoring is legal in most places but regulated, and rules vary
@@ -207,3 +232,30 @@ by country/state. Before rolling this out:
 This is a working scaffold, not a finished product: it's structured so you
 can run it end-to-end, but treat the crypto/config defaults as
 development-only until you've done the hardening pass in `SECURITY.md`.
+As of this writing, the agent's platform-specific code (Windows/macOS/Linux)
+has been syntax-checked but not run on a real machine of each OS — see
+"Known untested areas" below before you call any platform "supported."
+
+## Known untested areas (read this before relying on any of it)
+
+Being direct about exactly what has and hasn't been verified, and by what:
+
+| Area | Verified how | Not yet verified |
+|---|---|---|
+| Backend API (auth, RBAC, ingest, consent gate, replay/signature checks) | 24 automated tests, run against a real running server over HTTP, plus manual RBAC/isolation checks | Real penetration testing by someone actively trying to break it |
+| Windows/macOS/Linux agent code | `py_compile` syntax check only | Never executed on a real Windows, macOS, or Linux machine — the platform-specific idle/active-window code paths (pywin32, Quartz/AppKit, X11 tools) are unverified |
+| Windows PowerShell / cmd.exe setup instructions | Written to be syntactically correct PowerShell/cmd | Never run in an actual Windows terminal |
+| `docker-compose.yml` / `Dockerfile` | Written following standard patterns | No Docker was available to test this against; unverified |
+| Windows `.exe` / installer | Not attempted | No Windows environment available to build or test one |
+
+If you're inviting other testers, the most valuable thing they can do
+first is exercise the two rows with no verification at all (Windows
+PowerShell setup, and the agent itself on their OS) and report back.
+
+## License
+
+MIT — see `LICENSE`. Chosen for low friction (anyone can use, modify, and
+redistribute, including commercially, with attribution). If you'd rather
+have explicit patent-grant language given this is security software,
+Apache-2.0 is the other common choice — swap it before this gets much
+further if that matters to you.

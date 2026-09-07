@@ -4,8 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class IngestEvent(BaseModel):
     type: str = Field(pattern="^(activity|heartbeat)$")
     timestamp: float
-    device_id: str
-    nonce: str
+    device_id: str = Field(max_length=128)
+    nonce: str = Field(max_length=64)
     idle_seconds: float | None = None
     is_idle: bool | None = None
     app_category: str | None = Field(default=None, pattern="^(productive|neutral|other|unknown)$")
