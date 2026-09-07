@@ -1,5 +1,6 @@
 import asyncio
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -11,13 +12,33 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from database import Base, engine, SessionLocal
-from routers import ingest, auth_router, dashboard
-from routers.ingest import limiter
+from routers import ingest, auth_router, dashboard, devices
+from rate_limit import limiter
 from alerts import sweep_missed_heartbeats
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="CyberMNT Remote Team Monitor", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def sweep_loop():
+        while True:
+            db = SessionLocal()
+            try:
+                sweep_missed_heartbeats(db)
+            finally:
+                db.close()
+            await asyncio.sleep(60)
+
+    # Fine for a single-instance deployment. Running more than one backend
+    # replica? Move this to a proper scheduler (cron hitting an internal
+    # endpoint, or Celery beat) so it doesn't run once per replica.
+    task = asyncio.create_task(sweep_loop())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="CyberMNT Remote Team Monitor", version="0.1.0", lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -48,23 +69,7 @@ async def security_headers(request: Request, call_next):
 app.include_router(ingest.router)
 app.include_router(auth_router.router)
 app.include_router(dashboard.router)
-
-
-@app.on_event("startup")
-async def start_background_sweep():
-    async def loop():
-        while True:
-            db = SessionLocal()
-            try:
-                sweep_missed_heartbeats(db)
-            finally:
-                db.close()
-            await asyncio.sleep(60)
-
-    # Fine for a single-instance deployment. Running more than one backend
-    # replica? Move this to a proper scheduler (cron hitting an internal
-    # endpoint, or Celery beat) so it doesn't run once per replica.
-    asyncio.create_task(loop())
+app.include_router(devices.router)
 
 
 @app.get("/healthz")

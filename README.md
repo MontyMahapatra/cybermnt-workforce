@@ -27,8 +27,10 @@ below for why.
 
 ```
 cybermnt-monitor/
+├── .github/workflows/  # CI: runs the backend test suite on every push
 ├── agent/          # Cross-platform Python agent (Win/Mac/Linux)
 ├── backend/        # FastAPI backend: ingest API, auth, alerts, dashboard API
+│   └── tests/      # pytest suite (RBAC isolation, consent gate, replay/signature checks)
 ├── dashboard/       # Static web dashboard (manager/HR/admin views)
 ├── SECURITY.md      # Threat model, hardening controls, honest limitations
 └── .env.example
@@ -36,22 +38,72 @@ cybermnt-monitor/
 
 ## Quick start (backend)
 
-```bash
+**Windows (PowerShell)**
+```powershell
 cd backend
-python3 -m venv venv && source venv/bin/activate
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp ../.env.example .env      # edit secrets before running for real
+copy ..\.env.example .env
+uvicorn main:app --reload --port 8000
+```
+If `Activate.ps1` is blocked, PowerShell's script execution policy is off —
+see Troubleshooting below.
+
+**Windows (cmd.exe)**
+```bat
+cd backend
+python -m venv venv
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+copy ..\.env.example .env
 uvicorn main:app --reload --port 8000
 ```
 
-This spins up SQLite locally for evaluation. Swap `DATABASE_URL` in `.env`
-for Postgres in production (see `SECURITY.md`).
+**Linux / macOS (bash/zsh)**
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp ../.env.example .env
+uvicorn main:app --reload --port 8000
+```
+
+Whichever shell you used, edit `.env` before running for real — the copied
+file has placeholder secrets, not usable ones. This spins up SQLite locally
+for evaluation. Swap `DATABASE_URL` in `.env` for Postgres in production
+(see `SECURITY.md`).
 
 ## Quick start (agent)
 
+**Windows (PowerShell)**
+```powershell
+cd agent
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy config.example.yaml config.yaml
+notepad config.yaml   # fill in server_url, device_token, employee_id
+python monitor_agent.py
+```
+
+**Windows (cmd.exe)**
+```bat
+cd agent
+python -m venv venv
+venv\Scripts\activate.bat
+pip install -r requirements.txt
+copy config.example.yaml config.yaml
+notepad config.yaml
+python monitor_agent.py
+```
+
+**Linux / macOS (bash/zsh)**
 ```bash
 cd agent
-python3 -m venv venv && source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 cp config.example.yaml config.yaml   # fill in server_url, device_token, employee_id
 python3 monitor_agent.py
@@ -59,6 +111,69 @@ python3 monitor_agent.py
 
 The agent refuses to run until `consent_acknowledged: true` is set in
 `config.yaml` — that's intentional (see below).
+
+## Enrolling a new employee's device
+
+There's no self-serve UI for this yet — an admin does it via the API:
+
+```bash
+curl -X POST http://localhost:8000/devices/enroll \
+  -H "Authorization: Bearer <admin JWT from /auth/login>" \
+  -H "Content-Type: application/json" \
+  -d '{"employee_id": "emp_0002", "team": "soc"}'
+```
+
+This returns a `device_token` **once** — copy it into that employee's
+`config.yaml`. Enrollment does *not* set consent — call
+`POST /devices/{employee_id}/acknowledge-consent` as a separate step,
+only after the employee has actually been shown the monitoring notice.
+Ingest requests are rejected server-side until that step happens, even if
+the device secret is valid.
+
+## Running the tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+
+Covers signature verification, replay rejection, the consent gate, and —
+the one that matters most — that a manager scoped to one team can never
+read another team's data, even by guessing an employee ID directly. CI
+runs this same suite on every push (see `.github/workflows/`).
+
+## Troubleshooting
+
+**`The token '&&' is not a valid statement separator in this version.`**
+You're in PowerShell and ran a bash-style chained command (`a && b`).
+PowerShell doesn't support `&&` chaining on older versions (5.1, the
+Windows-default one). Use the PowerShell block above — one command per
+line — or if you're on PowerShell 7+, `;` chains commands (not `&&`).
+
+**`venv\Scripts\Activate.ps1 cannot be loaded because running scripts is
+disabled on this system`**
+PowerShell's execution policy is blocking the activation script. Run this
+once, in an admin PowerShell, then retry:
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+Or skip activation entirely and call the venv's Python directly:
+```powershell
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000
+```
+
+**`'python' is not recognized...` / `'python3' is not recognized...`**
+Windows installs the launcher as `python`, not `python3` — use `python` in
+the Windows blocks above (already reflected there). If that's still not
+found, Python isn't on PATH; reinstall from python.org with "Add to PATH"
+checked, or use `py -3` instead of `python`.
+
+**Port 8000 already in use**
+Something else is bound to it. Either stop that process, or run this
+backend on a different port: `uvicorn main:app --reload --port 8001` (and
+update `API_BASE` in `dashboard/index.html` to match).
 
 ## Dashboard
 
