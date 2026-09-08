@@ -11,6 +11,15 @@ on:
     tags:
       - "v*"
 
+# Explicit, rather than relying on whatever the repo/org default is --
+# the release-attach step below needs write access to create/update a
+# release, and an increasing number of repos now default GITHUB_TOKEN to
+# read-only. Without this, that step would 403 the first time it
+# actually mattered (a real tag push), which is exactly the kind of
+# thing that's easy to miss until it's tested for real.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -92,3 +101,5 @@ jobs:
           files: |
             agent/dist/CyberMNT-Agent.exe
             installer_output/CyberMNT-Monitor-Setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
