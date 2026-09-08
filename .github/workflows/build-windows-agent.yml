@@ -1,0 +1,94 @@
+name: Build Windows agent
+
+# This is the actual test of "does this run on Windows" -- windows-latest
+# is a real Windows Server VM, not an emulation. This is the mechanism
+# that lets a real Windows .exe get built and smoke-tested without anyone
+# needing to own a Windows machine.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent dependencies
+        working-directory: agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pywin32
+          pip install pyinstaller
+
+      - name: Run agent unit tests on real Windows
+        working-directory: agent
+        run: |
+          pip install pytest
+          python -m pytest tests/ -v
+
+      - name: Build the .exe with PyInstaller
+        working-directory: agent
+        run: |
+          pyinstaller --onefile --name CyberMNT-Agent --console monitor_agent.py
+
+      - name: Smoke-test the built .exe actually runs
+        working-directory: agent
+        shell: pwsh
+        run: |
+          # No config.yaml present here on purpose -- this confirms the
+          # packaged exe genuinely executes Python code (not just "the
+          # file exists"), and that the __file__-vs-frozen path fix
+          # works: it must complain about the MISSING config, not crash
+          # with an unrelated error or silently exit 0.
+          $proc = Start-Process -FilePath ".\dist\CyberMNT-Agent.exe" -NoNewWindow -Wait -PassThru -RedirectStandardError "stderr.txt" -RedirectStandardOutput "stdout.txt"
+          $stderrContent = Get-Content "stderr.txt" -Raw
+          Write-Host "Exit code: $($proc.ExitCode)"
+          Write-Host "Stderr: $stderrContent"
+          if ($proc.ExitCode -ne 1) {
+            Write-Error "Expected exit code 1 (missing config), got $($proc.ExitCode)"
+            exit 1
+          }
+          if ($stderrContent -notmatch "config.yaml not found") {
+            Write-Error "Expected the config-not-found message, got: $stderrContent"
+            exit 1
+          }
+          Write-Host "Smoke test passed: packaged exe runs and fails the expected way without config.yaml"
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" /DRepoRoot="${{ github.workspace }}" installer\windows\cybermnt_agent.iss
+
+      - name: Upload raw exe as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CyberMNT-Agent-exe
+          path: agent/dist/CyberMNT-Agent.exe
+
+      - name: Upload installer as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CyberMNT-Monitor-Setup
+          path: installer_output/CyberMNT-Monitor-Setup.exe
+
+      - name: Attach to GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            agent/dist/CyberMNT-Agent.exe
+            installer_output/CyberMNT-Monitor-Setup.exe

@@ -16,7 +16,6 @@ import hashlib
 import hmac
 import json
 import logging
-import queue
 import sys
 import time
 import uuid
@@ -33,8 +32,23 @@ logging.basicConfig(
 )
 log = logging.getLogger("cybermnt-agent")
 
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
-OFFLINE_QUEUE_PATH = Path(__file__).parent / ".offline_queue.jsonl"
+
+def get_app_dir() -> Path:
+    """Directory to read config from / write the offline queue to.
+
+    Path(__file__).parent breaks under PyInstaller's --onefile mode:
+    __file__ resolves to a temp extraction folder (sys._MEIPASS) that's
+    deleted when the process exits, not the folder the .exe actually
+    lives in. sys.frozen is the standard way PyInstaller signals "you're
+    running from a packaged exe" -- use the exe's own directory then.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+CONFIG_PATH = get_app_dir() / "config.yaml"
+OFFLINE_QUEUE_PATH = get_app_dir() / ".offline_queue.jsonl"
 
 
 def load_config() -> dict:
